@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { connectDB } from "./config/db.js";
+import { seedIfEmpty } from "./utils/seedData.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import authRoutes from "./routes/auth.js";
 import serviceRoutes from "./routes/services.js";
@@ -39,6 +40,10 @@ app.use(errorHandler);
 async function start() {
   try {
     await connectDB();
+    // Dev-only: with no MONGODB_URI the DB is a fresh in-memory instance
+    // per process, so `npm run seed` in another process could never be
+    // seen here. Auto-seed the empty dev DB so the demo works out of box.
+    if (!process.env.MONGODB_URI) await seedIfEmpty();
     app.listen(PORT, () => console.log(`SalonBook server running on port ${PORT}`));
   } catch (err) {
     console.error("Failed to start server:", err.message);
