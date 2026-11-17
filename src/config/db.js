@@ -1,33 +1,36 @@
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
-
-let memoryServer = null;
 
 /**
- * Connect to MongoDB.
- * - If MONGODB_URI is set, use it (production / real DB).
- * - Otherwise fall back to mongodb-memory-server so `npm run dev`
- *   works with zero setup. Never used in production.
+ * Connect to REAL MongoDB. MONGODB_URI is REQUIRED — in dev and in
+ * production. There is no in-memory / demo database anymore: data must
+ * persist across restarts.
+ *
+ * Local dev:  MONGODB_URI=mongodb://127.0.0.1:27017/salonbook
+ * Atlas:      MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/salonbook
+ *             (see ATLAS_SETUP.md for the free M0 cluster steps)
  */
 export async function connectDB() {
   if (mongoose.connection.readyState === 1) return mongoose.connection;
   const uri = process.env.MONGODB_URI;
-  if (uri) {
-    await mongoose.connect(uri);
-    console.log("MongoDB connected");
-    return mongoose.connection;
+  if (!uri) {
+    throw new Error(
+      "MONGODB_URI is not set. Set it in server/.env — " +
+      "local: mongodb://127.0.0.1:27017/salonbook, " +
+      "Atlas: see ATLAS_SETUP.md for the free cluster setup."
+    );
   }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("MONGODB_URI is required in production");
-  }
-  console.log("MONGODB_URI not set — starting in-memory MongoDB (dev only)...");
-  memoryServer = await MongoMemoryServer.create();
-  await mongoose.connect(memoryServer.getUri());
-  console.log("In-memory MongoDB connected");
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected (${mongoose.connection.host}:${mongoose.connection.port}/${mongoose.connection.name})`);
   return mongoose.connection;
+}
+
+/** Raw MongoDB driver Db instance (used by the Better Auth adapter). */
+export function getDb() {
+  const db = mongoose.connection.db;
+  if (!db) throw new Error("MongoDB is not connected yet — call connectDB() first");
+  return db;
 }
 
 export async function disconnectDB() {
   await mongoose.disconnect();
-  if (memoryServer) await memoryServer.stop();
 }
