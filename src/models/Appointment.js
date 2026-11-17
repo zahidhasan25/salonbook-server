@@ -9,7 +9,9 @@ export const TIME_SLOTS = [
 const appointmentSchema = new mongoose.Schema(
   {
     serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
-    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // Better Auth user id (string), NOT a Mongo ObjectId — the `user`
+    // collection is owned by Better Auth and its ids are strings.
+    customerId: { type: String, required: true },
     appointmentDate: { type: Date, required: true },
     timeSlot: { type: String, required: true, enum: TIME_SLOTS },
     message: { type: String, default: "" },

@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 const transactionSchema = new mongoose.Schema(
   {
     appointmentId: { type: mongoose.Schema.Types.ObjectId, ref: "Appointment", required: true },
-    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // Better Auth user id (string) — see Appointment.js.
+    customerId: { type: String, required: true },
     amount: { type: Number, required: true, min: 0 },
     currency: { type: String, default: "usd" },
     stripeSessionId: { type: String, required: true, unique: true },

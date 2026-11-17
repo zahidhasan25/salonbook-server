@@ -1,8 +1,9 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { toNodeHandler } from "better-auth/node";
 import { connectDB } from "./config/db.js";
-import { seedIfEmpty } from "./utils/seedData.js";
+import { getAuth } from "./lib/auth.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import authRoutes from "./routes/auth.js";
 import serviceRoutes from "./routes/services.js";
@@ -20,6 +21,16 @@ app.use(cors({ origin: [CLIENT_URL, "http://localhost:3000"], credentials: true 
 // Stripe webhook MUST be mounted before express.json() — it needs the raw body
 // for signature verification.
 app.post("/api/payments/webhook", express.raw({ type: "application/json" }), handleWebhook);
+
+// Better Auth MUST also run before express.json() — toNodeHandler reads the
+// raw request body itself. The custom /me and /profile endpoints are NOT
+// Better Auth endpoints, so they fall through to the JSON parser + router.
+app.all("/api/auth/*", async (req, res, next) => {
+  const sub = req.path.replace(/^\/api\/auth/, "");
+  if (sub === "/me" || sub === "/profile") return next();
+  const auth = await getAuth();
+  return toNodeHandler(auth)(req, res);
+});
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -39,11 +50,8 @@ app.use(errorHandler);
 
 async function start() {
   try {
-    await connectDB();
-    // Dev-only: with no MONGODB_URI the DB is a fresh in-memory instance
-    // per process, so `npm run seed` in another process could never be
-    // seen here. Auto-seed the empty dev DB so the demo works out of box.
-    if (!process.env.MONGODB_URI) await seedIfEmpty();
+    await connectDB(); // REAL MongoDB — throws a clear error if MONGODB_URI is unset
+    await getAuth(); // initialise Better Auth now so a bad config fails fast at boot
     app.listen(PORT, () => console.log(`SalonBook server running on port ${PORT}`));
   } catch (err) {
     console.error("Failed to start server:", err.message);

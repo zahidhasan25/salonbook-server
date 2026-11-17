@@ -1,13 +1,13 @@
 import express from "express";
-import User from "../models/User.js";
-import { authenticate, publicUser, requireAdmin } from "../middleware/auth.js";
+import { listCustomers, publicUser, setUserBlocked, getUserById } from "../lib/users.js";
+import { authenticate, requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
 // GET /api/users — admin; customers only, no passwords
 router.get("/", authenticate, requireAdmin, async (req, res, next) => {
   try {
-    const users = await User.find({ role: "customer" }).sort({ createdAt: -1 });
+    const users = await listCustomers();
     res.json({ users: users.map(publicUser) });
   } catch (err) { next(err); }
 });
@@ -17,12 +17,11 @@ router.patch("/:id/block", authenticate, requireAdmin, async (req, res, next) =>
   try {
     const { isBlocked } = req.body;
     if (typeof isBlocked !== "boolean") return res.status(400).json({ message: "isBlocked must be true or false" });
-    const user = await User.findById(req.params.id);
+    const user = await getUserById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.role === "admin") return res.status(400).json({ message: "Admin accounts cannot be blocked" });
-    user.isBlocked = isBlocked;
-    await user.save();
-    res.json({ user: publicUser(user) });
+    const updated = await setUserBlocked(req.params.id, isBlocked);
+    res.json({ user: publicUser(updated) });
   } catch (err) { next(err); }
 });
 

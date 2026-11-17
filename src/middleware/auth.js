@@ -1,56 +1,36 @@
-import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import { getAuth } from "../lib/auth.js";
+import { fromNodeHeaders } from "better-auth/node";
+import { publicUser } from "../lib/users.js";
 
-function jwtSecret() {
-  return process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || "";
+export { publicUser };
+
+/** Resolve the logged-in Better Auth user from the session cookie, or null. */
+export async function getSessionUser(req) {
+  const auth = await getAuth();
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+  return session?.user || null;
 }
 
-export function signToken(user) {
-  const secret = jwtSecret();
-  if (!secret) throw new Error("BETTER_AUTH_SECRET / JWT_SECRET is not set");
-  return jwt.sign({ id: user._id.toString(), role: user.role }, secret, { expiresIn: "7d" });
-}
-
-export function publicUser(user) {
-  return {
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    image: user.image || "",
-    phone: user.phone || "",
-    role: user.role,
-    isBlocked: user.isBlocked,
-    createdAt: user.createdAt,
-  };
-}
-
-/** Verify JWT from `Authorization: Bearer <token>`, attach req.user, reject blocked users. */
+/** Require a valid Better Auth session; reject blocked users (403). */
 export async function authenticate(req, res, next) {
   try {
-    const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ message: "Unauthorized: token required" });
-    const secret = jwtSecret();
-    if (!secret) return res.status(500).json({ message: "Server auth is not configured" });
-    const decoded = jwt.verify(token, secret);
-    const user = await User.findById(decoded.id);
-    if (!user) return res.status(401).json({ message: "Unauthorized: user not found" });
+    const user = await getSessionUser(req);
+    if (!user) return res.status(401).json({ message: "Unauthorized: please sign in" });
     if (user.isBlocked) return res.status(403).json({ message: "Your account is blocked. Contact the salon." });
-    req.user = user;
+    // Plain object (not a Mongoose doc). _id aliases id so existing
+    // route code using req.user._id keeps working; id is the Better Auth id.
+    req.user = { ...publicUser(user), _id: user.id };
     next();
   } catch (err) {
-    return res.status(401).json({ message: "Unauthorized: invalid or expired token" });
+    next(err);
   }
 }
 
-/** Attach req.user when a valid token is present; continue anonymously otherwise. */
+/** Attach req.user when a valid session exists; continue anonymously otherwise. */
 export async function optionalAuth(req, res, next) {
-  const header = req.headers.authorization || "";
-  if (!header.startsWith("Bearer ")) return next();
   try {
-    const decoded = jwt.verify(header.slice(7), jwtSecret());
-    const user = await User.findById(decoded.id);
-    if (user && !user.isBlocked) req.user = user;
+    const user = await getSessionUser(req);
+    if (user && !user.isBlocked) req.user = { ...publicUser(user), _id: user.id };
   } catch { /* anonymous */ }
   next();
 }

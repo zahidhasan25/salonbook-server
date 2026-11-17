@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Appointment, { TIME_SLOTS } from "../models/Appointment.js";
 import Service from "../models/Service.js";
 import { authenticate, requireAdmin, requireCustomer } from "../middleware/auth.js";
+import { getUserById, publicUser } from "../lib/users.js";
 
 const router = express.Router();
 
@@ -33,14 +34,14 @@ router.post("/", authenticate, requireCustomer, async (req, res, next) => {
     // Duplicate active appointment: same customer + service + date + slot
     const start = new Date(day); const end = new Date(day); end.setDate(end.getDate() + 1);
     const dup = await Appointment.findOne({
-      customerId: req.user._id, serviceId,
+      customerId: req.user.id, serviceId,
       appointmentDate: { $gte: start, $lt: end },
       timeSlot, status: { $in: ["pending", "confirmed"] },
     });
     if (dup) return res.status(409).json({ message: "You already have an active appointment for this service at that date and time" });
 
     const appt = await Appointment.create({
-      serviceId, customerId: req.user._id, appointmentDate: date, timeSlot,
+      serviceId, customerId: req.user.id, appointmentDate: date, timeSlot,
       message: message || "", servicePrice: service.price,
       status: "pending", paymentStatus: "unpaid",
     });
@@ -54,7 +55,7 @@ router.post("/", authenticate, requireCustomer, async (req, res, next) => {
 // GET /api/appointments/mine — customer (must be before /:id)
 router.get("/mine", authenticate, requireCustomer, async (req, res, next) => {
   try {
-    const list = await Appointment.find({ customerId: req.user._id })
+    const list = await Appointment.find({ customerId: req.user.id })
       .populate("serviceId").sort({ createdAt: -1 });
     res.json({ appointments: list.map(serialize) });
   } catch (err) { next(err); }
@@ -63,20 +64,32 @@ router.get("/mine", authenticate, requireCustomer, async (req, res, next) => {
 // GET /api/appointments — admin, all
 router.get("/", authenticate, requireAdmin, async (req, res, next) => {
   try {
-    const list = await Appointment.find().populate("serviceId").populate("customerId", "name email image phone").sort({ createdAt: -1 });
-    res.json({ appointments: list.map(serialize) });
+    const list = await Appointment.find().populate("serviceId").sort({ createdAt: -1 });
+    const out = [];
+    for (const appt of list) {
+      const s = serialize(appt);
+      const u = await getUserById(appt.customerId);
+      s.customerId = u ? publicUser(u) : appt.customerId; // same shape as the old populate
+      out.push(s);
+    }
+    res.json({ appointments: out });
   } catch (err) { next(err); }
 });
 
 // GET /api/appointments/:id — owner or admin
 router.get("/:id", authenticate, async (req, res, next) => {
   try {
-    const appt = await Appointment.findById(req.params.id).populate("serviceId").populate("customerId", "name email image phone");
+    const appt = await Appointment.findById(req.params.id).populate("serviceId");
     if (!appt) return res.status(404).json({ message: "Appointment not found" });
-    if (req.user.role !== "admin" && appt.customerId._id.toString() !== req.user._id.toString()) {
+    if (req.user.role !== "admin" && appt.customerId !== req.user.id) {
       return res.status(403).json({ message: "Forbidden: this is not your appointment" });
     }
-    res.json({ appointment: serialize(appt) });
+    const s = serialize(appt);
+    if (req.user.role === "admin") {
+      const u = await getUserById(appt.customerId);
+      s.customerId = u ? publicUser(u) : appt.customerId;
+    }
+    res.json({ appointment: s });
   } catch (err) { next(err); }
 });
 
@@ -104,7 +117,7 @@ router.patch("/:id/cancel", authenticate, requireCustomer, async (req, res, next
   try {
     const appt = await Appointment.findById(req.params.id);
     if (!appt) return res.status(404).json({ message: "Appointment not found" });
-    if (appt.customerId.toString() !== req.user._id.toString()) {
+    if (appt.customerId !== req.user.id) {
       return res.status(403).json({ message: "Forbidden: you can only cancel your own appointments" });
     }
     if (appt.status !== "pending") {
