@@ -1,4 +1,12 @@
+import { ObjectId } from "mongodb";
 import { getDb } from "../config/db.js";
+
+// The `user` collection stores _id as a BSON ObjectId, while Better Auth's
+// API exposes it as a 24-char hex string (user.id). Convert for raw queries.
+function toObjectId(id) {
+  if (!id) return id;
+  try { return new ObjectId(id); } catch { return id; }
+}
 
 /**
  * Users live in Better Auth's `user` collection (not a Mongoose model —
@@ -8,9 +16,12 @@ import { getDb } from "../config/db.js";
 
 export function publicUser(doc) {
   if (!doc) return null;
+  // Raw docs from the `user` collection store the id in `_id` (a string);
+  // Better Auth's API maps it to `id` on read. Accept both shapes.
+  const id = doc.id || (doc._id ? doc._id.toString() : undefined);
   return {
-    id: doc.id,
-    _id: doc.id, // alias: old code used req.user._id / user._id
+    id,
+    _id: id, // alias: old code used req.user._id / user._id
     name: doc.name,
     email: doc.email,
     image: doc.image || "",
@@ -22,7 +33,7 @@ export function publicUser(doc) {
 }
 
 export async function getUserById(id) {
-  return getDb().collection("user").findOne({ id });
+  return getDb().collection("user").findOne({ _id: toObjectId(id) });
 }
 
 export async function getUserByEmail(email) {
@@ -34,11 +45,11 @@ export async function listCustomers() {
 }
 
 export async function setUserBlocked(id, isBlocked) {
-  await getDb().collection("user").updateOne({ id }, { $set: { isBlocked } });
+  await getDb().collection("user").updateOne({ _id: toObjectId(id) }, { $set: { isBlocked } });
   return getUserById(id);
 }
 
 export async function updateUserProfile(id, fields) {
-  await getDb().collection("user").updateOne({ id }, { $set: fields });
+  await getDb().collection("user").updateOne({ _id: toObjectId(id) }, { $set: fields });
   return getUserById(id);
 }
