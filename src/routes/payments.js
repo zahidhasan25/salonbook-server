@@ -61,9 +61,10 @@ router.post("/checkout", authenticate, requireCustomer, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
-// POST /api/payments/webhook — raw body, Stripe signature verified when secret is set.
-// NEVER mark an appointment paid without a verified webhook event in production.
-router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+// Webhook handler — exported so index.js can mount it BEFORE express.json()
+// (Stripe signature verification needs the raw body). Never mark an appointment
+// paid without a verified webhook event in production.
+export async function handleWebhook(req, res) {
   const stripe = stripeClient();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -117,6 +118,6 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
   }
 
   res.json({ received: true });
-});
+}
 
 export default router;
