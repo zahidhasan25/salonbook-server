@@ -1,5 +1,6 @@
-import bcrypt from "bcryptjs";
-import User from "../models/User.js";
+import { getAuth } from "../lib/auth.js";
+import { getDb } from "../config/db.js";
+import { getUserByEmail } from "../lib/users.js";
 import Service from "../models/Service.js";
 
 export const SERVICES = [
@@ -14,15 +15,34 @@ export const SERVICES = [
 ];
 
 async function seedUser(email, name, password, role) {
-  const existing = await User.findOne({ email });
-  if (existing) return existing;
-  return User.create({ name, email, password: await bcrypt.hash(password, 10), role });
+  const existing = await getUserByEmail(email);
+  if (existing) {
+    // Idempotent re-run: still make sure the admin really is an admin.
+    if (role === "admin" && existing.role !== "admin") {
+      await getDb().collection("user").updateOne({ email }, { $set: { role: "admin" } });
+      console.log(`Promoted to admin: ${email}`);
+    } else {
+      console.log(`User exists, skipping: ${email}`);
+    }
+    return existing;
+  }
+  // Create through Better Auth so the password is hashed and the account
+  // row is created exactly as a real sign-up would create it.
+  const auth = await getAuth();
+  await auth.api.signUpEmail({ body: { name, email, password } });
+  console.log(`Created ${role}: ${email}`);
+  if (role === "admin") {
+    // Role is input:false in Better Auth, so it can never come from a
+    // sign-up request — set it directly on the `user` collection.
+    await getDb().collection("user").updateOne({ email }, { $set: { role: "admin" } });
+  }
+  return getUserByEmail(email);
 }
 
 // Idempotent: only seeds when the DB is empty, so a real DB is never
-// overwritten. Used by `npm run seed` and by dev auto-seed (see index.js).
+// overwritten. Used by `npm run seed` (real MongoDB only).
 export async function seedIfEmpty() {
-  const userCount = await User.countDocuments();
+  const userCount = await getDb().collection("user").countDocuments();
   const serviceCount = await Service.countDocuments();
   if (userCount > 0 && serviceCount > 0) { console.log("Seed: data already present, skipping."); return; }
   await seedUser("admin@salonbook.com", "Salon Admin", "Admin123", "admin");
