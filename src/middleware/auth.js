@@ -43,6 +43,18 @@ export async function authenticate(req, res, next) {
   }
 }
 
+/** Attach req.user when a valid token is present; continue anonymously otherwise. */
+export async function optionalAuth(req, res, next) {
+  const header = req.headers.authorization || "";
+  if (!header.startsWith("Bearer ")) return next();
+  try {
+    const decoded = jwt.verify(header.slice(7), jwtSecret());
+    const user = await User.findById(decoded.id);
+    if (user && !user.isBlocked) req.user = user;
+  } catch { /* anonymous */ }
+  next();
+}
+
 /** Require one of the given roles (server-side role verification). */
 export function requireRole(...roles) {
   return (req, res, next) => {

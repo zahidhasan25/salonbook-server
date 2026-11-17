@@ -2,30 +2,21 @@ import express from "express";
 import multer from "multer";
 import mongoose from "mongoose";
 import Service from "../models/Service.js";
-import { authenticate, requireAdmin } from "../middleware/auth.js";
+import { authenticate, optionalAuth, requireAdmin } from "../middleware/auth.js";
 import { uploadImage } from "../utils/imgbb.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // GET /api/services — public, only active unless ?status=all (admin only)
-router.get("/", async (req, res, next) => {
+router.get("/", optionalAuth, async (req, res, next) => {
   try {
     const { search, category, sort, status } = req.query;
     const filter = {};
     if (status === "all") {
-      // Admin-only view of inactive services: requires a valid admin token.
-      const header = req.headers.authorization || "";
-      if (!header.startsWith("Bearer ")) return res.status(401).json({ message: "Admin token required to list all services" });
-      // Role is verified by the admin check in the caller path below via token decode;
-      // simplest safe check: require admin by loading the user here.
-      const jwt = (await import("jsonwebtoken")).default;
-      const secret = process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || "";
-      let decoded;
-      try { decoded = jwt.verify(header.slice(7), secret); } catch { return res.status(401).json({ message: "Invalid token" }); }
-      const User = (await import("../models/User.js")).default;
-      const admin = await User.findById(decoded.id);
-      if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin only" });
+      // Server-side role check: only a verified admin token may list inactive services.
+      if (!req.user) return res.status(401).json({ message: "Admin token required to list all services" });
+      if (req.user.role !== "admin") return res.status(403).json({ message: "Admin only" });
     } else {
       filter.status = "active";
     }
