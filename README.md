@@ -6,7 +6,7 @@ This repository is the **server** (REST API). The client is a separate repositor
 
 ## Features
 
-- JWT authentication (register, login, Google sign-in placeholder, profile update)
+- **Better Auth** authentication (real library): email sign-up / sign-in, Google OAuth (when keys are configured), session cookies, profile update
 - Role-based access: `customer` and `admin`, verified server-side on every protected route
 - Blocked users cannot access protected features
 - Services: search by name, filter by category, sort by price, admin CRUD + activate/deactivate, ImgBB image upload
@@ -18,10 +18,9 @@ This repository is the **server** (REST API). The client is a separate repositor
 ## Technology Stack
 
 - Node.js (>= 20), Express.js (ES modules)
-- MongoDB with Mongoose
-- JWT (`jsonwebtoken`), `bcryptjs`
+- **Real MongoDB** with Mongoose (required — no in-memory/demo database; see `ATLAS_SETUP.md`)
+- **Better Auth** (`better-auth` + mongodb adapter) with session cookies — no JWT, no bcrypt in app code
 - Stripe, ImgBB (via `axios`), Multer (image upload)
-- `mongodb-memory-server` as a dev-only fallback when `MONGODB_URI` is unset
 
 ## Installation
 
@@ -47,9 +46,9 @@ Names only — never put real secret values in code or in a README:
 | Variable | Purpose |
 |---|---|
 | `PORT` | Server port (default 5000) |
-| `MONGODB_URI` | MongoDB connection string (required in production; dev falls back to in-memory MongoDB) |
-| `BETTER_AUTH_SECRET` | JWT signing secret (preferred) |
-| `JWT_SECRET` | JWT signing secret (fallback) |
+| `MONGODB_URI` | **Required.** Real MongoDB connection string — local `mongodb://127.0.0.1:27017/salonbook` or Atlas `mongodb+srv://...` (see `ATLAS_SETUP.md`). Server refuses to start without it. |
+| `BETTER_AUTH_SECRET` | Better Auth secret (min 32 chars, e.g. `openssl rand -base64 32`) — signs session cookies. |
+| `BASE_URL` | Server base URL for Better Auth (default http://localhost:5000) |
 | `CLIENT_URL` | Allowed client origin for CORS (default http://localhost:3000) |
 | `STRIPE_SECRET_KEY` | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
@@ -90,3 +89,22 @@ TODO — add after deployment.
 - Admin accounts are never created through public registration; use the seed script or create one directly in the database.
 - Google sign-in (`POST /api/auth/google`) is a find-or-create placeholder until `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are configured with verified ID-token checking.
 - In demo payment mode (`DEMO_PAYMENTS=true`, no Stripe key), checkout returns a demo success URL; payment is only marked paid via the demo webhook event, never by the client alone.
+
+## Authentication (Better Auth)
+
+Auth is **session-cookie based** — the client must send requests with
+credentials included (`credentials: "include"` / `withCredentials`), there
+is **no Bearer token** anymore.
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/auth/sign-up/email` | `{ name, email, password }` — password: min 6 chars, 1 upper + 1 lower |
+| `POST /api/auth/sign-in/email` | `{ email, password }` |
+| `POST /api/auth/sign-in/social` | `{ provider: "google" }` (needs Google keys) |
+| `POST /api/auth/sign-out` | Ends the session |
+| `GET /api/auth/get-session` | Current session + user |
+| `GET /api/auth/me` | Current user (with role / isBlocked / phone) |
+| `PATCH /api/auth/profile` | Update own name / image / phone only — role / isBlocked can never change here |
+
+All other `/api/*` routes are unchanged. Blocked users get 403 on every
+protected route.
