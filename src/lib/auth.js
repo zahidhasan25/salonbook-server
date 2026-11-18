@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { jwt } from "better-auth/plugins";
 import { createAuthMiddleware, APIError } from "better-auth/api";
 import { connectDB } from "../config/db.js";
 
@@ -35,6 +36,11 @@ export async function getAuth() {
     baseURL: process.env.BASE_URL || "http://localhost:5000",
     trustedOrigins: [process.env.CLIENT_URL || "http://localhost:3000"],
     database: mongodbAdapter(db),
+    // JWT (assignment requirement): the jwt plugin signs a real JWT for the
+    // logged-in user (GET /api/auth/token, verified against the JWKS at
+    // GET /api/auth/jwks). See src/lib/jwtAuth.js — protected routes accept
+    // `Authorization: Bearer <jwt>` as well as the session cookie.
+    plugins: [jwt()],
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 6,

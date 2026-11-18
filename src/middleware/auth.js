@@ -1,14 +1,20 @@
 import { getAuth } from "../lib/auth.js";
 import { fromNodeHeaders } from "better-auth/node";
 import { publicUser } from "../lib/users.js";
+import { getJwtUser } from "../lib/jwtAuth.js";
 
 export { publicUser };
 
-/** Resolve the logged-in Better Auth user from the session cookie, or null. */
+/**
+ * Resolve the logged-in user: first the Better Auth session cookie, then
+ * a `Authorization: Bearer <jwt>` token (Better Auth jwt plugin, verified
+ * against the JWKS keys). Returns null when neither is valid.
+ */
 export async function getSessionUser(req) {
   const auth = await getAuth();
   const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-  return session?.user || null;
+  if (session?.user) return session.user;
+  return getJwtUser(req);
 }
 
 /** Require a valid Better Auth session; reject blocked users (403). */

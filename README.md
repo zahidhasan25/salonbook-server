@@ -7,6 +7,7 @@ This repository is the **server** (REST API). The client is a separate repositor
 ## Features
 
 - **Better Auth** authentication (real library): email sign-up / sign-in, Google OAuth (when keys are configured), session cookies, profile update
+- **JWT**: Better Auth jwt plugin — `GET /api/auth/token` issues a signed JWT for the logged-in user, verified against the JWKS at `GET /api/auth/jwks`; protected routes accept `Authorization: Bearer <JWT>` as well as the session cookie
 - Role-based access: `customer` and `admin`, verified server-side on every protected route
 - Blocked users cannot access protected features
 - Services: search by name, filter by category, sort by price, admin CRUD + activate/deactivate, ImgBB image upload
@@ -19,7 +20,7 @@ This repository is the **server** (REST API). The client is a separate repositor
 
 - Node.js (>= 20), Express.js (ES modules)
 - **Real MongoDB** with Mongoose (required — no in-memory/demo database; see `ATLAS_SETUP.md`)
-- **Better Auth** (`better-auth` + mongodb adapter) with session cookies — no JWT, no bcrypt in app code
+- **Better Auth** (`better-auth` + mongodb adapter) with session cookies and the **jwt plugin** (signed JWTs, JWKS) — no bcrypt in app code
 - Stripe, ImgBB (via `axios`), Multer (image upload)
 
 ## Installation
@@ -66,9 +67,9 @@ Names only — never put real secret values in code or in a README:
 
 ## API Overview
 
-Base URL: `/api`. Protected routes require `Authorization: Bearer <JWT>`.
+Base URL: `/api`. Protected routes accept the session cookie (`credentials: "include"`) or `Authorization: Bearer <JWT>` (see Authentication).
 
-- `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/google`, `GET /api/auth/me`, `PATCH /api/auth/profile`
+- `POST /api/auth/sign-up/email`, `POST /api/auth/sign-in/email`, `POST /api/auth/sign-in/social` (Google), `POST /api/auth/sign-out`, `GET /api/auth/get-session`, `GET /api/auth/token` (JWT), `GET /api/auth/jwks`, `GET /api/auth/me`, `PATCH /api/auth/profile`
 - `GET /api/services?search=&category=&sort=price_asc|price_desc`, `GET /api/services/:id`, `POST/PUT/DELETE /api/services/:id` (admin), `PATCH /api/services/:id/status` (admin)
 - `POST /api/appointments` (customer), `GET /api/appointments/mine` (customer), `GET /api/appointments` (admin), `GET /api/appointments/:id`, `PATCH /api/appointments/:id/status` (admin), `PATCH /api/appointments/:id/cancel` (customer)
 - `GET /api/users` (admin), `PATCH /api/users/:id/block` (admin)
@@ -87,14 +88,22 @@ TODO — add after deployment.
 ## Notes
 
 - Admin accounts are never created through public registration; use the seed script or create one directly in the database.
-- Google sign-in (`POST /api/auth/google`) is a find-or-create placeholder until `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are configured with verified ID-token checking.
+- Google sign-in is real Better Auth Google OAuth (`POST /api/auth/sign-in/social`, provider `google`); it is only enabled when `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set in `.env`.
 - In demo payment mode (`DEMO_PAYMENTS=true`, no Stripe key), Pay Now opens a demo card form (any 16-digit number is accepted, e.g. 4242 4242 4242 4242; the card is never sent to the server or stored) and checkout returns a demo success URL; payment is only marked paid via the demo webhook event, never by the client alone.
 
-## Authentication (Better Auth)
+## Authentication (Better Auth + JWT)
 
 Auth is **session-cookie based** — the client must send requests with
-credentials included (`credentials: "include"` / `withCredentials`), there
-is **no Bearer token** anymore.
+credentials included (`credentials: "include"` / `withCredentials`).
+Protected routes also accept a **JWT**: after signing in, call
+`GET /api/auth/token` (with the session cookie) to get a signed JWT
+(EdDSA, 15-minute expiry, `sub` = user id, `iss`/`aud` = server base URL),
+then send it as `Authorization: Bearer <token>`. The server verifies it
+against the public keys in the `jwks` collection (`src/lib/jwtAuth.js`,
+`jose`); the keys are also published at `GET /api/auth/jwks` so any
+outside service can verify tokens the same way. A bad or expired token
+gets 401, and role checks (admin/customer) and the blocked-user check
+(403) still apply exactly as with the session cookie.
 
 | Endpoint | Description |
 |---|---|
@@ -103,6 +112,8 @@ is **no Bearer token** anymore.
 | `POST /api/auth/sign-in/social` | `{ provider: "google" }` (needs Google keys) |
 | `POST /api/auth/sign-out` | Ends the session |
 | `GET /api/auth/get-session` | Current session + user |
+| `GET /api/auth/token` | Signed JWT for the logged-in user (session required) |
+| `GET /api/auth/jwks` | Public JWKS keys for verifying JWTs |
 | `GET /api/auth/me` | Current user (with role / isBlocked / phone) |
 | `PATCH /api/auth/profile` | Update own name / image / phone only — role / isBlocked can never change here |
 
