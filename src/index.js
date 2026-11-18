@@ -18,6 +18,20 @@ const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 
 app.use(cors({ origin: [CLIENT_URL, "http://localhost:3000"], credentials: true }));
 
+// Lazy-connect for serverless hosts (Vercel): on a normal server start()
+// already connected, so this returns instantly (readyState === 1). On
+// Vercel there is no long-lived process, so the first request per cold
+// start connects here instead. Never throws for a missing DB on its own —
+// connectDB() throws the clear MONGODB_URI error, handled by errorHandler.
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Stripe webhook MUST be mounted before express.json() — it needs the raw body
 // for signature verification.
 app.post("/api/payments/webhook", express.raw({ type: "application/json" }), handleWebhook);
@@ -59,6 +73,12 @@ async function start() {
   }
 }
 
-start();
+// On Vercel (serverless) there is no long-lived process to listen on —
+// Vercel invokes the exported app per request (see api/index.js), and the
+// lazy-connect middleware above connects MongoDB on first request. Locally
+// (and on any normal host) start the listener as usual.
+if (!process.env.VERCEL) {
+  start();
+}
 
 export default app;

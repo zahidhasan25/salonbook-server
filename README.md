@@ -80,10 +80,28 @@ Base URL: `/api`. Protected routes accept the session cookie (`credentials: "inc
 
 TODO — add after deployment.
 
+## Deploy on Vercel (server)
+
+The server runs as a Vercel serverless function — no separate host needed:
+
+1. Import the `salonbook-server` repo on Vercel (Add New → Project → Import).
+2. Framework Preset: **Other**. Root Directory: repo root (default).
+3. Add the same Environment Variables as in `.env.example` (Atlas `MONGODB_URI`,
+   `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`,
+   Stripe keys, `IMGBB_API_KEY`), with:
+   - `BASE_URL` = your Vercel server URL, e.g. `https://salonbook-server.vercel.app`
+   - `CLIENT_URL` = your Vercel client URL, e.g. `https://salonbook-client.vercel.app`
+4. Deploy. All routes are served by `api/index.js` (see `vercel.json`); locally
+   nothing changes — `npm run dev` still listens on port 5000.
+5. After both URLs exist, update the Google OAuth client (add the Vercel client
+   origin + `https://<server>/api/auth/callback/google` redirect) and the Stripe
+   webhook endpoint (`https://<server>/api/payments/webhook`, new `whsec_` secret
+   into Vercel env vars, then redeploy).
+
 ## Repository Links
 
-- Client repository: TODO
-- Server repository: TODO
+- Client repository: https://github.com/zahidhasan25/salonbook-client
+- Server repository: https://github.com/zahidhasan25/salonbook-server
 
 ## Notes
 
