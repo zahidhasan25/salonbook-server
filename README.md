@@ -113,6 +113,13 @@ The server runs as a Vercel serverless function — no separate host needed:
 
 Auth is **session-cookie based** — the client must send requests with
 credentials included (`credentials: "include"` / `withCredentials`).
+On a live deployment the client and server run on **different domains**
+(cross-site), so the session cookie is issued with `SameSite=None; Secure`
+whenever `BASE_URL` is `https://` (`src/lib/auth.js`,
+`advanced.defaultCookieAttributes`); with the default `SameSite=Lax` the
+browser never sends the cookie back cross-site, so sign-in looks
+successful but no session persists. Locally (`BASE_URL=http://…`) the
+default Lax cookie is kept so local login still works.
 Protected routes also accept a **JWT**: after signing in, call
 `GET /api/auth/token` (with the session cookie) to get a signed JWT
 (EdDSA, 15-minute expiry, `sub` = user id, `iss`/`aud` = server base URL),

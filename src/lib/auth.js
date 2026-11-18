@@ -31,10 +31,23 @@ export async function getAuth() {
   const googleId = process.env.GOOGLE_CLIENT_ID;
   const googleSecret = process.env.GOOGLE_CLIENT_SECRET;
 
+  // Live client and server run on DIFFERENT Vercel domains (cross-site),
+  // so the session cookie must travel with cross-site fetches. Better Auth's
+  // default is SameSite=Lax, which the browser never sends back cross-site —
+  // sign-in then looks successful (the response carries the session) but no
+  // session persists, so the navbar still shows "Sign In". SameSite=None
+  // requires Secure, so it is only enabled on https deployments (Vercel);
+  // locally (http) the default Lax cookie is kept so local login still works.
+  const baseURL = process.env.BASE_URL || "http://localhost:5000";
+  const isHttps = baseURL.startsWith("https://");
+
   authInstance = betterAuth({
     secret,
-    baseURL: process.env.BASE_URL || "http://localhost:5000",
+    baseURL,
     trustedOrigins: [process.env.CLIENT_URL || "http://localhost:3000"],
+    advanced: {
+      ...(isHttps ? { defaultCookieAttributes: { sameSite: "none", secure: true } } : {}),
+    },
     database: mongodbAdapter(db),
     // JWT (assignment requirement): the jwt plugin signs a real JWT for the
     // logged-in user (GET /api/auth/token, verified against the JWKS at
