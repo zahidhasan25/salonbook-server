@@ -88,7 +88,7 @@ TODO — add after deployment.
 
 - Admin accounts are never created through public registration; use the seed script or create one directly in the database.
 - Google sign-in (`POST /api/auth/google`) is a find-or-create placeholder until `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are configured with verified ID-token checking.
-- In demo payment mode (`DEMO_PAYMENTS=true`, no Stripe key), checkout returns a demo success URL; payment is only marked paid via the demo webhook event, never by the client alone.
+- In demo payment mode (`DEMO_PAYMENTS=true`, no Stripe key), Pay Now opens a demo card form (any 16-digit number is accepted, e.g. 4242 4242 4242 4242; the card is never sent to the server or stored) and checkout returns a demo success URL; payment is only marked paid via the demo webhook event, never by the client alone.
 
 ## Authentication (Better Auth)
 
