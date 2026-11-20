@@ -45,6 +45,15 @@ export async function getAuth() {
     secret,
     baseURL,
     trustedOrigins: [process.env.CLIENT_URL || "http://localhost:3000"],
+    // Google OAuth across two Vercel domains: Better Auth stores the OAuth
+    // state in the database AND checks a signed `state` cookie on callback.
+    // That cookie is set on a cross-site fetch (client -> server), so a
+    // browser blocking third-party cookies never stores it and the callback
+    // fails with `?error=state_mismatch`. The state itself is still a
+    // server-side random secret verified against the database record, so
+    // skipping only the extra cookie check keeps the flow safe while making
+    // Google login work across domains.
+    account: { skipStateCookieCheck: true },
     advanced: {
       ...(isHttps ? { defaultCookieAttributes: { sameSite: "none", secure: true } } : {}),
     },
