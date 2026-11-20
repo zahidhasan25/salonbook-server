@@ -61,6 +61,48 @@ router.post("/checkout", authenticate, requireCustomer, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+// GET /api/payments/session/:sessionId — customer; real payment status for the success page.
+// The success page must never claim Paid from static text: only a webhook-created
+// transaction proves the payment. While the webhook has not processed the event
+// yet, this returns { status: "pending" } and the client polls until it is paid.
+router.get("/session/:sessionId", authenticate, requireCustomer, async (req, res, next) => {
+  try {
+    const { sessionId } = req.params;
+    const txn = await Transaction.findOne({ stripeSessionId: sessionId })
+      .populate({ path: "appointmentId", populate: { path: "serviceId" } });
+    if (txn) {
+      const a = txn.appointmentId;
+      if (!a || a.customerId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: "Forbidden: this is not your payment" });
+      }
+      return res.json({
+        status: "paid",
+        amount: txn.amount,
+        currency: txn.currency,
+        serviceName: a.serviceId?.serviceName || null,
+        appointmentDate: a.appointmentDate,
+      });
+    }
+    if (sessionId.startsWith("demo_")) {
+      const appt = await Appointment.findById(sessionId.slice(5)).populate("serviceId");
+      if (!appt) return res.status(404).json({ message: "Appointment not found" });
+      if (appt.customerId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: "Forbidden: this is not your payment" });
+      }
+      return res.json({
+        status: appt.paymentStatus === "paid" ? "paid" : "pending",
+        amount: appt.servicePrice,
+        currency: "usd",
+        serviceName: appt.serviceId?.serviceName || null,
+        appointmentDate: appt.appointmentDate,
+        demo: true,
+      });
+    }
+    // Stripe accepted the payment but the webhook has not processed it yet.
+    return res.json({ status: "pending" });
+  } catch (err) { next(err); }
+});
+
 // Webhook handler — exported so index.js can mount it BEFORE express.json()
 // (Stripe signature verification needs the raw body). Never mark an appointment
 // paid without a verified webhook event in production.

@@ -9,7 +9,7 @@ const router = express.Router();
 router.get("/mine", authenticate, requireCustomer, async (req, res, next) => {
   try {
     const txns = await Transaction.find({ customerId: req.user.id })
-      .populate("appointmentId").sort({ createdAt: -1 });
+      .populate({ path: "appointmentId", populate: { path: "serviceId" } }).sort({ createdAt: -1 });
     res.json({ transactions: txns });
   } catch (err) { next(err); }
 });
@@ -18,7 +18,7 @@ router.get("/mine", authenticate, requireCustomer, async (req, res, next) => {
 router.get("/", authenticate, requireAdmin, async (req, res, next) => {
   try {
     const txns = await Transaction.find()
-      .populate("appointmentId").sort({ createdAt: -1 });
+      .populate({ path: "appointmentId", populate: { path: "serviceId" } }).sort({ createdAt: -1 });
     const out = txns.map((x) => {
       const o = x.toObject ? x.toObject() : x;
       return o;
